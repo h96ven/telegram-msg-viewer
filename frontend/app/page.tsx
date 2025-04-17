@@ -31,12 +31,13 @@ export default function Home() {
               radius="lg"
               variant="solid"
               className="
-                font-semibold
-                text-white bg-indigo-600
+                relative overflow-hidden
+                font-semibold text-white bg-indigo-600
                 shadow-2xl rounded-full
                 transition-all duration-200
                 hover:bg-indigo-700 hover:shadow-2xl/80
                 cursor-pointer
+                py-2
               "
             >
               Sign Up
@@ -51,15 +52,16 @@ export default function Home() {
               radius="lg"
               variant="bordered"
               className="
-      font-semibold
-      text-indigo-600
-      border-2 border-indigo-600
-      bg-white
-      shadow-md rounded-full
-      transition-all duration-200
-      hover:bg-indigo-50 hover:border-indigo-700 hover:shadow-lg
-      cursor-pointer
-    "
+                font-semibold
+                text-indigo-600
+                border-2 border-indigo-600
+                bg-white
+                shadow-md rounded-full
+                transition-all duration-200
+                hover:bg-indigo-50 hover:border-indigo-700 hover:shadow-lg
+                cursor-pointer
+                py-2
+              "
             >
               Log In
             </Button>
