@@ -1,6 +1,12 @@
 fastapi
 uvicorn[standard]
 telethon
-sqlalchemy
+sqlalchemy[asyncio]
+asyncpg
+psycopg2-binary
+alembic
+python-dotenv
 passlib[bcrypt]
 python-jose[cryptography]
+pydantic-settings
+bcrypt>=3.2.0
