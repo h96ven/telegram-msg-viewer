@@ -70,7 +70,7 @@ export default function RegisterPage() {
             radius="lg"
             variant="solid"
             onPress={handleRegister}
-            className="py-2 relative overflow-hidden font-semibold text-white bg-indigo-600 shadow-2xl rounded-full transition-all duration-200 hover:bg-indigo-700 hover:shadow-2xl/80 cursor-pointer"
+            className="py-2 mt-1 relative overflow-hidden font-semibold text-white bg-indigo-600 shadow-2xl rounded-full transition-all duration-200 hover:bg-indigo-700 hover:shadow-2xl/80 cursor-pointer"
           >
             Sign Up
           </Button>
