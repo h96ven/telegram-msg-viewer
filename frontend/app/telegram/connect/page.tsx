@@ -14,6 +14,7 @@ interface ConnectResponse {
 
 interface VerifyResponse {
   message: string;
+  my_id: number;
 }
 
 interface VerifyPayload {
@@ -57,6 +58,7 @@ export default function ConnectTelegramPage() {
         payload
       );
       localStorage.setItem("phone", phone.trim());
+      localStorage.setItem("my_id", String(data.my_id));
       setMsg(data.message);
       router.push("/telegram/chats");
     } catch (error: unknown) {

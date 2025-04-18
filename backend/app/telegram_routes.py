@@ -22,6 +22,8 @@ _photo_cache: dict[int, tuple[str, datetime]] = {}
 CACHE_TTL = timedelta(hours=6)
 _DIALOGS_CACHE: Dict[str, Tuple[List, datetime]] = {}
 DLG_TTL = timedelta(seconds=60)
+_USER_CACHE: dict[int, tuple[dict, datetime]] = {}
+USER_TTL = timedelta(hours=6)
 
 
 class PhoneNumber(BaseModel):
@@ -104,6 +106,9 @@ async def verify_code(code_data: CodeData, db: AsyncSession = Depends(get_db)):
         await client.disconnect()
         raise HTTPException(400, "Code expired, request a new one")
 
+    me = await client.get_me()
+    my_id = me.id
+
     session_str = client.session.save()
     await client.disconnect()
 
@@ -112,7 +117,10 @@ async def verify_code(code_data: CodeData, db: AsyncSession = Depends(get_db)):
 
     pending.pop(phone, None)
 
-    return {"message": "Telegram account connected successfully"}
+    return {
+        "message": "Telegram account connected successfully",
+        "my_id": my_id
+    }
 
 
 async def _get_client(phone: str, db: AsyncSession) -> TelegramClient:
@@ -179,6 +187,27 @@ async def get_chats(
     return {"total": total, "page": page, "size": size, "chats": chats}
 
 
+async def _get_entity_cached(client: TelegramClient, uid: int):
+    now = datetime.utcnow()
+    cached = _USER_CACHE.get(uid)
+    if cached and cached[1] > now:
+        return cached[0]  # already have fresh data
+
+    entity = await client.get_entity(uid)
+    name = getattr(entity, "first_name", None) or getattr(entity, "title",
+                                                          "") or "Unknown"
+
+    # аватар у base64 (не обов'язково, але вже є)
+    raw = await client.download_profile_photo(entity, file=bytes)
+    photo_b64 = ""
+    if raw:
+        photo_b64 = "data:image/jpeg;base64," + base64.b64encode(raw).decode()
+
+    info = {"name": name, "photo": photo_b64}
+    _USER_CACHE[uid] = (info, now + USER_TTL)
+    return info
+
+
 @router.get("/messages/{chat_id}")
 async def get_messages(
         chat_id: int,
@@ -189,16 +218,20 @@ async def get_messages(
 ):
     client = await _get_client(phone, db)
 
-    msgs_all = [m async for m in client.iter_messages(chat_id)]
-    msgs_all.reverse()
+    all_msgs = [m async for m in client.iter_messages(chat_id)]
+    all_msgs.reverse()
 
-    total = len(msgs_all)
+    total = len(all_msgs)
     total_pages = max(1, (total + size - 1) // size)
-
     page = max(1, min(page, total_pages))
+
     start = total - page * size
     end = total - (page - 1) * size
-    slice_ = msgs_all[max(0, start):end]
+    slice_ = all_msgs[max(0, start):end]
+
+    # ---- збираємо авторів пачкою, щоб уникнути N+1 запитів
+    uids = {m.sender_id for m in slice_ if m.sender_id}
+    user_map = {uid: await _get_entity_cached(client, uid) for uid in uids}
 
     await client.disconnect()
 
@@ -210,11 +243,19 @@ async def get_messages(
         "size":
         size,
         "messages": [{
-            "id": m.id,
-            "sender_id": m.sender_id,
-            "text": m.message or "",
-            "date": m.date.isoformat(),
-        } for m in slice_],
+            "id":
+            m.id,
+            "sender_id":
+            m.sender_id,
+            "sender_name":
+            user_map.get(m.sender_id, {}).get("name", ""),
+            "sender_photo":
+            user_map.get(m.sender_id, {}).get("photo", ""),
+            "text":
+            m.message or "",
+            "date":
+            m.date.isoformat(),
+        } for m in slice_]
     }
 
 
