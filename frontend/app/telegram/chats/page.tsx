@@ -12,14 +12,16 @@ export default function Chats() {
 
   const [chats, setChats] = useState<Chat[]>([]);
   const phone =
-    typeof window !== "undefined" ? localStorage.getItem("phone") : "";
+    typeof window !== "undefined" ? localStorage.getItem("phone")?.trim() : "";
 
   useEffect(() => {
     if (!phone) return;
     (async () => {
       try {
         const { data } = await axios.get(
-          `http://localhost:8000/telegram/chats?phone=${phone}`
+          `http://localhost:8000/telegram/chats?phone=${encodeURIComponent(
+            phone
+          )}`
         );
         setChats(data.chats);
       } catch (err) {

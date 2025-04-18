@@ -21,7 +21,7 @@ class PhoneNumber(BaseModel):
 
 class CodeData(BaseModel):
     phone: str
-    code: str
+    code: str | None = None
     password: str | None = None
 
 
@@ -74,8 +74,11 @@ async def verify_code(code_data: CodeData, db: AsyncSession = Depends(get_db)):
     try:
         if pwd:
             await client.sign_in(password=pwd)
-        else:
+        elif code:
             await client.sign_in(phone=phone, code=code, phone_code_hash=hash_)
+        else:
+            raise HTTPException(400, "Code or password must be provided")
+
     except errors.SessionPasswordNeededError:
         tmp_session = client.session.save()
         await client.disconnect()
@@ -104,6 +107,7 @@ async def verify_code(code_data: CodeData, db: AsyncSession = Depends(get_db)):
 
 
 async def _get_client(phone: str, db: AsyncSession) -> TelegramClient:
+    phone = phone.strip()
     rec = await db.scalar(
         select(TelegramSession).where(TelegramSession.phone == phone))
     if not rec:
@@ -118,7 +122,12 @@ async def get_chats(phone: str, db: AsyncSession = Depends(get_db)):
     client = await _get_client(phone, db)
     dialogs = await client.get_dialogs()
     await client.disconnect()
-    return {"chats": [{"name": d.name, "id": d.id} for d in dialogs]}
+    return {
+        "chats": [{
+            "name": d.name or d.title or "Untitled",
+            "id": d.id
+        } for d in dialogs]
+    }
 
 
 @router.get("/messages/{chat_id}")

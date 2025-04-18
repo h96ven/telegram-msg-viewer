@@ -42,7 +42,7 @@ export default function ConnectTelegramPage() {
       if (axios.isAxiosError(error)) {
         const detail = (error as AxiosError<{ detail?: string }>).response?.data
           .detail;
-        setMsg(detail ?? "Error connecting");
+        setMsg(typeof detail === "string" ? detail : "Error connecting");
       } else {
         setMsg("Error connecting");
       }
@@ -56,6 +56,7 @@ export default function ConnectTelegramPage() {
         "http://localhost:8000/telegram/verify",
         payload
       );
+      localStorage.setItem("phone", phone.trim());
       setMsg(data.message);
       router.push("/telegram/chats");
     } catch (error: unknown) {
@@ -66,7 +67,9 @@ export default function ConnectTelegramPage() {
           setMsg(detailData);
           setStep("password");
         } else {
-          setMsg(detailData ? detailData : "Error verifying code");
+          setMsg(
+            typeof detailData === "string" ? detailData : "Error verifying code"
+          );
         }
       } else {
         setMsg("Error verifying code");
@@ -80,13 +83,16 @@ export default function ConnectTelegramPage() {
         "http://localhost:8000/telegram/verify",
         { phone, password }
       );
+      localStorage.setItem("phone", phone.trim());
       setMsg(data.message);
       router.push("/telegram/chats");
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         const detail = (error as AxiosError<{ detail?: string }>).response?.data
           .detail;
-        setMsg(detail ?? "Error verifying password");
+        setMsg(
+          typeof detail === "string" ? detail : "Error verifying password"
+        );
       } else {
         setMsg("Error verifying password");
       }
