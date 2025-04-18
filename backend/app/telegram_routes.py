@@ -1,14 +1,18 @@
-from fastapi import APIRouter, HTTPException
+from app.config import settings
+from app.database import get_db
+from app.models import TelegramSession
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from telethon import errors
+from telethon.sessions import StringSession
 from telethon.sync import TelegramClient
 
 router = APIRouter()
 
-API_ID = 123456
-API_HASH = "your_api_hash_here"
-
-telegram_clients = {}
+API_ID = settings.telegram_api_id
+API_HASH = settings.telegram_api_hash
 
 
 class PhoneNumber(BaseModel):
@@ -18,89 +22,133 @@ class PhoneNumber(BaseModel):
 class CodeData(BaseModel):
     phone: str
     code: str
+    password: str | None = None
+
+
+pending: dict[str, str] = {}
 
 
 @router.post("/connect")
-async def connect_telegram(phone_data: PhoneNumber):
+async def connect_telegram(phone_data: PhoneNumber,
+                           db: AsyncSession = Depends(get_db)):
     phone = phone_data.phone
-    client = TelegramClient(f"session_{phone}", API_ID, API_HASH)
+    client = TelegramClient(StringSession(), API_ID, API_HASH)
     await client.connect()
-
     try:
-        if not await client.is_user_authorized():
-            await client.send_code_request(phone)
-            telegram_clients[phone] = client
+        sent = await client.send_code_request(phone)
+        session_str = client.session.save()
 
-            return {"message": "Code sent"}
-
+        existing_session = await db.scalar(
+            select(TelegramSession).where(TelegramSession.phone == phone))
+        if existing_session:
+            existing_session.session_str = session_str
         else:
-            return {"message": "Already authorized"}
+            db.add(TelegramSession(phone=phone, session_str=session_str))
+        await db.commit()
+
+        pending[phone] = sent.phone_code_hash
+        return {"message": "Code sent"}
 
     except errors.PhoneNumberInvalidError:
-        raise HTTPException(status_code=400, detail="Invalid phone number")
+        raise HTTPException(400, "Invalid phone number")
+    finally:
+        await client.disconnect()
 
 
 @router.post("/verify")
-async def verify_code(code_data: CodeData):
-    phone = code_data.phone
-    code = code_data.code
+async def verify_code(code_data: CodeData, db: AsyncSession = Depends(get_db)):
+    phone, code, pwd = code_data.phone, code_data.code, code_data.password
 
-    client = telegram_clients.get(phone)
-    if not client:
-        raise HTTPException(status_code=400, detail="Session not found")
+    hash_ = pending.get(phone)
+    if hash_ is None:
+        raise HTTPException(400, "Start verification again")
+
+    rec = await db.scalar(
+        select(TelegramSession).where(TelegramSession.phone == phone))
+    if not rec:
+        raise HTTPException(400, "Start verification again")
+
+    client = TelegramClient(StringSession(rec.session_str), API_ID, API_HASH)
+    await client.connect()
 
     try:
-        await client.sign_in(phone, code)
-        return {"message": "Telegram account connected successfully"}
-
+        if pwd:
+            await client.sign_in(password=pwd)
+        else:
+            await client.sign_in(phone=phone, code=code, phone_code_hash=hash_)
     except errors.SessionPasswordNeededError:
-        raise HTTPException(status_code=401,
-                            detail="Two-step verification required")
+        tmp_session = client.session.save()
+        await client.disconnect()
+
+        rec.session_str = tmp_session
+        await db.commit()
+        raise HTTPException(401, "Two-step verification required")
 
     except errors.CodeInvalidError:
-        raise HTTPException(status_code=400, detail="Invalid code")
+        await client.disconnect()
+        raise HTTPException(400, "Invalid code")
+
+    except errors.PhoneCodeExpiredError:
+        await client.disconnect()
+        raise HTTPException(400, "Code expired, request a new one")
+
+    session_str = client.session.save()
+    await client.disconnect()
+
+    rec.session_str = session_str
+    await db.commit()
+
+    pending.pop(phone, None)
+
+    return {"message": "Telegram account connected successfully"}
+
+
+async def _get_client(phone: str, db: AsyncSession) -> TelegramClient:
+    rec = await db.scalar(
+        select(TelegramSession).where(TelegramSession.phone == phone))
+    if not rec:
+        raise HTTPException(401, "Not authenticated")
+    client = TelegramClient(StringSession(rec.session_str), API_ID, API_HASH)
+    await client.connect()
+    return client
 
 
 @router.get("/chats")
-async def get_chats(phone: str):
-    client = telegram_clients.get(phone)
-    if not client:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+async def get_chats(phone: str, db: AsyncSession = Depends(get_db)):
+    client = await _get_client(phone, db)
     dialogs = await client.get_dialogs()
-    chats = []
-    for d in dialogs:
-        chats.append({"name": d.name, "id": d.id})
-
-    return {"chats": chats}
+    await client.disconnect()
+    return {"chats": [{"name": d.name, "id": d.id} for d in dialogs]}
 
 
 @router.get("/messages/{chat_id}")
-async def get_messages(phone: str, chat_id: int):
-    client = telegram_clients.get(phone)
-    if not client:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+async def get_messages(chat_id: int,
+                       phone: str,
+                       db: AsyncSession = Depends(get_db)):
+    client = await _get_client(phone, db)
     messages = []
     async for msg in client.iter_messages(chat_id, limit=50):
         messages.append({
             "id": msg.id,
             "sender_id": msg.sender_id,
             "text": msg.message,
-            "date": str(msg.date)
+            "date": str(msg.date),
         })
-
+    await client.disconnect()
     return {"messages": messages}
 
 
 @router.post("/logout")
-async def logout_telegram(phone: str):
-    client = telegram_clients.get(phone)
-    if not client:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+async def logout_telegram(phone: str, db: AsyncSession = Depends(get_db)):
+    client = await _get_client(phone, db)
     await client.log_out()
     await client.disconnect()
-    telegram_clients.pop(phone, None)
+
+    result = await db.execute(
+        select(TelegramSession).where(TelegramSession.phone == phone))
+    rec = result.scalars().first()
+    if rec:
+        await db.delete(rec)
+        await db.commit()
 
     return {"message": "Logged out from Telegram"}

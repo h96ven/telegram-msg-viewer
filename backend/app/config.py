@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     database_url: str = Field(..., env="DATABASE_URL")
+    telegram_api_id: int = Field(..., env="TELEGRAM_API_ID")
+    telegram_api_hash: str = Field(..., env="TELEGRAM_API_HASH")
 
 
 settings = Settings()
