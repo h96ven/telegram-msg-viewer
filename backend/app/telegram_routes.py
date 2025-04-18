@@ -1,7 +1,11 @@
+import base64
+from datetime import datetime, timedelta
+from typing import Dict, List, Tuple
+
 from app.config import settings
 from app.database import get_db
 from app.models import TelegramSession
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -13,6 +17,11 @@ router = APIRouter()
 
 API_ID = settings.telegram_api_id
 API_HASH = settings.telegram_api_hash
+
+_photo_cache: dict[int, tuple[str, datetime]] = {}
+CACHE_TTL = timedelta(hours=6)
+_DIALOGS_CACHE: Dict[str, Tuple[List, datetime]] = {}
+DLG_TTL = timedelta(seconds=60)
 
 
 class PhoneNumber(BaseModel):
@@ -120,17 +129,54 @@ async def _get_client(phone: str, db: AsyncSession) -> TelegramClient:
     return client
 
 
-@router.get("/chats")
-async def get_chats(phone: str, db: AsyncSession = Depends(get_db)):
+async def _precache_photos(phone: str, db: AsyncSession, ids: list[int]):
     client = await _get_client(phone, db)
-    dialogs = await client.get_dialogs()
+    for chat_id in ids:
+        if chat_id in _photo_cache and _photo_cache[chat_id][
+                1] > datetime.utcnow():
+            continue
+        try:
+            entity = await client.get_entity(chat_id)
+            raw = await client.download_profile_photo(entity, file=bytes)
+            if raw:
+                b64 = "data:image/jpeg;base64," + base64.b64encode(
+                    raw).decode()
+                _photo_cache[chat_id] = (b64, datetime.utcnow() + CACHE_TTL)
+        except Exception:
+            pass
     await client.disconnect()
-    return {
-        "chats": [{
-            "name": d.name or d.title or "Untitled",
-            "id": d.id
-        } for d in dialogs]
-    }
+
+
+@router.get("/chats")
+async def get_chats(
+        phone: str,
+        background: BackgroundTasks,
+        page: int = 1,
+        size: int = 20,
+        db: AsyncSession = Depends(get_db),
+):
+    now = datetime.utcnow()
+
+    dialogs_all, ttl = _DIALOGS_CACHE.get(phone,
+                                          ([], now - timedelta(seconds=1)))
+    if ttl < now:
+        client = await _get_client(phone, db)
+        dialogs_all = await client.get_dialogs()
+        await client.disconnect()
+        _DIALOGS_CACHE[phone] = (dialogs_all, now + DLG_TTL)
+
+    total = len(dialogs_all)
+    start, end = (page - 1) * size, page * size
+    slice_ = dialogs_all[start:end]
+
+    chats = [{
+        "id": d.id,
+        "name": d.name or d.title or "Untitled"
+    } for d in slice_]
+
+    background.add_task(_precache_photos, phone, db, [d.id for d in slice_])
+
+    return {"total": total, "page": page, "size": size, "chats": chats}
 
 
 @router.get("/messages/{chat_id}")
@@ -148,6 +194,30 @@ async def get_messages(chat_id: int,
         })
     await client.disconnect()
     return {"messages": messages}
+
+
+@router.get("/chat_photo/{chat_id}")
+async def chat_photo(chat_id: int,
+                     phone: str,
+                     db: AsyncSession = Depends(get_db)):
+    b64, ttl = _photo_cache.get(chat_id, ("", datetime.utcnow()))
+    if ttl > datetime.utcnow():
+        return {"photo": b64}
+
+    try:
+        client = await _get_client(phone, db)
+        entity = await client.get_entity(chat_id)
+        raw = await client.download_profile_photo(entity, file=bytes)
+        await client.disconnect()
+    except Exception:
+        return {"photo": ""}
+
+    if not raw:
+        return {"photo": ""}
+
+    b64 = "data:image/jpeg;base64," + base64.b64encode(raw).decode()
+    _photo_cache[chat_id] = (b64, datetime.utcnow() + CACHE_TTL)
+    return {"photo": b64}
 
 
 @router.post("/logout")
