@@ -1,12 +1,12 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import axios from "axios";
-import { useParams } from "next/navigation";
-import Link from "next/link";
+
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Button } from "@heroui/react";
+import axios from "axios";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
-/* ---- тип з бек‑енду ---- */
 interface Msg {
   id: number;
   sender_id: number;
@@ -15,7 +15,6 @@ interface Msg {
   date: string;
 }
 
-/* ---- стилі ---- */
 const pagerBtn = `
   flex items-center justify-center
   h-10 min-w-[48px] px-3 rounded-lg
@@ -37,16 +36,14 @@ export default function Messages() {
   const myId =
     typeof window !== "undefined" ? localStorage.getItem("my_id") ?? "" : "";
 
-  /* -------- state -------- */
-  const [page, setPage] = useState(0); // 0 – найновіші
+  const [page, setPage] = useState(0);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [loading, setLoad] = useState(true);
-  const [hasNext, setNext] = useState(false); // ▲ старіші
-  const [hasPrev, setPrev] = useState(false); // ▼ новіші
+  const [hasNext, setNext] = useState(false);
+  const [hasPrev, setPrev] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  /* ---- fetch ---- */
   useEffect(() => {
     if (!phone) return;
     setLoad(true);
@@ -57,30 +54,25 @@ export default function Messages() {
           `?phone=${encodeURIComponent(phone)}&page=${page}&size=${PAGE_SIZE}`
       );
 
-      setMsgs(data.messages.reverse()); // newest → bottom
+      setMsgs(data.messages.reverse());
       setNext(data.has_next);
       setPrev(data.has_prev);
       setLoad(false);
     })();
   }, [phone, chatId, page]);
 
-  /* ---- автоскрол униз ---- */
   useEffect(
     () => bottomRef.current?.scrollIntoView({ behavior: "auto" }),
     [msgs]
   );
 
-  /* ========================= JSX ========================= */
   return (
     <main className="h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-indigo-100">
-      {/* -------- top‑bar: | back | paginator | logout‑buttons | -------- */}
       <header className="flex items-center gap-4 px-3 py-2 bg-white shadow">
-        {/* ← назад до чатів */}
         <Link href="/telegram/chats" className={navBtn}>
           <ArrowLeftIcon className="h-4 w-4" /> Chats
         </Link>
 
-        {/* центр: пагінатор · flex‑1 щоб стати посередині */}
         <div className="flex-1 flex items-center justify-center gap-2">
           <Button
             className={pagerBtn}
@@ -105,7 +97,6 @@ export default function Messages() {
           </Button>
         </div>
 
-        {/* праворуч: виходи */}
         <div className="flex gap-2">
           <Link href="/telegram/logout" className={navBtn}>
             Logout TG
@@ -116,7 +107,6 @@ export default function Messages() {
         </div>
       </header>
 
-      {/* -------- стрічка -------- */}
       <section className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
         {loading &&
           Array.from({ length: 8 }).map((_, i) => (

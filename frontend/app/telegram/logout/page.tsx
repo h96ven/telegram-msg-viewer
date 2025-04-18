@@ -22,20 +22,18 @@ export default function LogoutTelegram() {
       } catch (err) {
         console.error(err);
       } finally {
-        // phone залишаємо, щоб можна було швидко під’єднатися знову
         router.replace("/telegram/connect");
       }
     })();
   }, [router]);
 
-  /* ---------------- JSX ---------------- */
   return (
     <main
       className="
-      min-h-screen                       /* висота на весь екран           */
-      flex items-center justify-center   /* центруємо по вертикалі й горизонталі */
-      bg-gradient-to-br from-blue-50 via-white to-indigo-100
-    "
+        min-h-screen
+        flex items-center justify-center
+        bg-gradient-to-br from-blue-50 via-white to-indigo-100
+      "
     >
       <p className="text-lg font-medium text-gray-700">
         Logging&nbsp;out&nbsp;of&nbsp;Telegram…

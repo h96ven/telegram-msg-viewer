@@ -84,12 +84,9 @@ export default function Chats() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100">
-      {/* ===== ШАПКА НА ВСЮ ШИРИНУ ===== */}
       <header className="relative w-full px-6 py-4 mb-6">
-        {/* «Chats» по центру */}
         <h2 className="text-2xl font-bold text-gray-800 text-center">Chats</h2>
 
-        {/* кнопки виходу — абсолютні, приклеєні до правого краю viewport */}
         <div className="absolute top-1/2 right-3 -translate-y-1/2 flex gap-2">
           <Link href="/telegram/logout" className={logoutBtn}>
             Logout TG
@@ -100,9 +97,7 @@ export default function Chats() {
         </div>
       </header>
 
-      {/* ===== КОНТЕНТ ===== */}
       <div className="mx-auto w-full max-w-md flex flex-col items-center px-6">
-        {/* список чатів */}
         <div className="relative w-full space-y-4">
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-sm rounded-3xl z-10">
@@ -169,7 +164,6 @@ export default function Chats() {
             ))}
         </div>
 
-        {/* пагінація */}
         <div className="mt-8 flex gap-3">
           <Button
             className={pagerBtn}
