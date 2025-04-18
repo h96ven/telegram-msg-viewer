@@ -180,20 +180,42 @@ async def get_chats(
 
 
 @router.get("/messages/{chat_id}")
-async def get_messages(chat_id: int,
-                       phone: str,
-                       db: AsyncSession = Depends(get_db)):
+async def get_messages(
+        chat_id: int,
+        phone: str,
+        page: int = 1,
+        size: int = 30,
+        db: AsyncSession = Depends(get_db),
+):
     client = await _get_client(phone, db)
-    messages = []
-    async for msg in client.iter_messages(chat_id, limit=50):
-        messages.append({
-            "id": msg.id,
-            "sender_id": msg.sender_id,
-            "text": msg.message,
-            "date": str(msg.date),
-        })
+
+    msgs_all = [m async for m in client.iter_messages(chat_id)]
+    msgs_all.reverse()
+
+    total = len(msgs_all)
+    total_pages = max(1, (total + size - 1) // size)
+
+    page = max(1, min(page, total_pages))
+    start = total - page * size
+    end = total - (page - 1) * size
+    slice_ = msgs_all[max(0, start):end]
+
     await client.disconnect()
-    return {"messages": messages}
+
+    return {
+        "total":
+        total,
+        "page":
+        page,
+        "size":
+        size,
+        "messages": [{
+            "id": m.id,
+            "sender_id": m.sender_id,
+            "text": m.message or "",
+            "date": m.date.isoformat(),
+        } for m in slice_],
+    }
 
 
 @router.get("/chat_photo/{chat_id}")
