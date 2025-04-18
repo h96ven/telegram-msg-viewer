@@ -212,36 +212,40 @@ async def _get_entity_cached(client: TelegramClient, uid: int):
 async def get_messages(
         chat_id: int,
         phone: str,
-        page: int = 1,
+        page: int = 0,  # 0 – останні, 1 – попередня сторінка тощо
         size: int = 30,
         db: AsyncSession = Depends(get_db),
 ):
     client = await _get_client(phone, db)
 
-    all_msgs = [m async for m in client.iter_messages(chat_id)]
-    all_msgs.reverse()
+    # ――― читаємо size+1 шт. ↓ від самого КІНЦЯ (reverse=False за замовч.)
+    raw = [
+        m async for m in client.iter_messages(
+            chat_id,
+            limit=size + 1,  # на 1 більше, щоб дізнатись «has_next»
+            add_offset=page * size,  # пропускаємо page·size від КІНЦЯ
+            reverse=False  # оставляємо порядок newest→oldest
+        )
+    ]
+    msgs = raw[:size]  # рівно size для віддачі
+    has_next = len(raw) > size  # ще є старіші?
+    has_prev = page > 0  # є новіші (нижче)
 
-    total = len(all_msgs)
-    total_pages = max(1, (total + size - 1) // size)
-    page = max(1, min(page, total_pages))
-
-    start = total - page * size
-    end = total - (page - 1) * size
-    slice_ = all_msgs[max(0, start):end]
-
-    # ---- збираємо авторів пачкою, щоб уникнути N+1 запитів
-    uids = {m.sender_id for m in slice_ if m.sender_id}
+    # ---- автори одним запитом + кеш ----
+    uids = {m.sender_id for m in msgs if m.sender_id}
     user_map = {uid: await _get_entity_cached(client, uid) for uid in uids}
 
     await client.disconnect()
 
     return {
-        "total":
-        total,
         "page":
         page,
         "size":
         size,
+        "has_next":
+        has_next,
+        "has_prev":
+        has_prev,
         "messages": [{
             "id":
             m.id,
@@ -249,13 +253,11 @@ async def get_messages(
             m.sender_id,
             "sender_name":
             user_map.get(m.sender_id, {}).get("name", ""),
-            "sender_photo":
-            user_map.get(m.sender_id, {}).get("photo", ""),
             "text":
             m.message or "",
             "date":
             m.date.isoformat(),
-        } for m in slice_]
+        } for m in msgs]
     }
 
 

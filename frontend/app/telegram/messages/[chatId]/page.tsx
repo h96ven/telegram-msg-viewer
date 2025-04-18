@@ -4,17 +4,16 @@ import axios from "axios";
 import { useParams } from "next/navigation";
 import { Button } from "@heroui/react";
 
-/* -------- тип повідомлення -------- */
+/* --- бек‑ендова форма повідомлення --- */
 interface Msg {
   id: number;
   sender_id: number;
   sender_name: string;
-  sender_photo: string; // можна й не використовувати
   text: string;
   date: string;
 }
 
-/* -------- універсальний клас кнопки пагінатора -------- */
+/* --- стиль кнопок --- */
 const pagerBtn = `
   flex items-center justify-center
   h-10 min-w-[48px] px-3 rounded-lg
@@ -24,30 +23,28 @@ const pagerBtn = `
 `;
 
 export default function Messages() {
+  const PAGE_SIZE = 30;
   const { chatId } = useParams<{ chatId: string }>();
   const phone =
     typeof window !== "undefined" ? localStorage.getItem("phone") ?? "" : "";
 
-  /* ---------- state ---------- */
-  const PAGE_SIZE = 30;
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
-  const [loading, setLoading] = useState(true);
+  /* state */
+  const [page, setPage] = useState(0); // 0 – самий кінець
   const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [myId, setMyId] = useState<string>(""); // ← ЗБЕРІГАЄМО як STRING
+  const [loading, setLoad] = useState(true);
+  const [hasNext, setNext] = useState(false); // ▲ (старіші)
+  const [hasPrev, setPrev] = useState(false); // ▼ (новіші)
+  const [myId, setMyId] = useState<string>("");
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  /* зчитуємо my_id один раз після mount */
-  useEffect(() => {
-    if (typeof window !== "undefined")
-      setMyId(localStorage.getItem("my_id") ?? "");
-  }, []);
+  /* зчитуємо my_id один раз */
+  useEffect(() => setMyId(localStorage.getItem("my_id") ?? ""), []);
 
-  /* завантаження чергової сторінки */
+  /* запит порції */
   useEffect(() => {
     if (!phone) return;
-    setLoading(true);
+    setLoad(true);
 
     (async () => {
       const { data } = await axios.get(
@@ -55,58 +52,55 @@ export default function Messages() {
           `?phone=${encodeURIComponent(phone)}&page=${page}&size=${PAGE_SIZE}`
       );
 
-      setPages(Math.max(1, Math.ceil(data.total / PAGE_SIZE)));
-      setMsgs(data.messages);
-      setLoading(false);
+      setMsgs(data.messages.reverse()); // показуємо знизу‑вгору
+      setNext(data.has_next);
+      setPrev(data.has_prev);
+      setLoad(false);
     })();
   }, [phone, chatId, page]);
 
-  /* автоскрол у кінець */
-  useEffect(() => bottomRef.current?.scrollIntoView(), [msgs]);
+  /* автоскрол у кінець (найновіше) */
+  useEffect(
+    () => bottomRef.current?.scrollIntoView({ behavior: "auto" }),
+    [msgs]
+  );
 
-  /* ---------- JSX ---------- */
+  /* --- JSX --- */
   return (
     <main className="h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-indigo-100">
-      {/* пагінатор */}
-      <header className="flex items-center justify-center gap-2 p-3 bg-white shadow">
+      {/* ПАГІНАТОР */}
+      <header className="flex items-center justify-center gap-3 p-3 bg-white shadow">
+        {/* до кінця */}
         <Button
           className={pagerBtn}
-          isDisabled={page >= pages}
-          onPress={() => setPage(pages)}
+          isDisabled={page === 0}
+          onPress={() => setPage(0)}
         >
-          First
+          Last
         </Button>
+
+        {/* ↓ новіші */}
         <Button
           className={pagerBtn}
-          isDisabled={page >= pages}
+          isDisabled={!hasPrev}
+          onPress={() => setPage((p) => Math.max(0, p - 1))}
+        >
+          ▼
+        </Button>
+
+        {/* ↑ старіші */}
+        <Button
+          className={pagerBtn}
+          isDisabled={!hasNext}
           onPress={() => setPage((p) => p + 1)}
         >
           ▲
         </Button>
-
-        <span className="text-sm font-medium">
-          {pages - page + 1}/{pages}
-        </span>
-
-        <Button
-          className={pagerBtn}
-          isDisabled={page <= 1}
-          onPress={() => setPage((p) => p - 1)}
-        >
-          ▼
-        </Button>
-        <Button
-          className={pagerBtn}
-          isDisabled={page <= 1}
-          onPress={() => setPage(1)}
-        >
-          Last
-        </Button>
       </header>
 
-      {/* стрічка */}
+      {/* СТРІЧКА */}
       <section className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {/* skeleton */}
+        {/* скелет */}
         {loading &&
           Array.from({ length: 8 }).map((_, i) => (
             <div
@@ -115,7 +109,7 @@ export default function Messages() {
             />
           ))}
 
-        {/* повідомлення */}
+        {/* меседжі */}
         {!loading &&
           msgs.map((m) => {
             const mine = String(m.sender_id) === myId;
@@ -134,13 +128,11 @@ export default function Messages() {
                 `}
                   title={new Date(m.date).toLocaleString()}
                 >
-                  {/* ім'я автора показуємо лише для чужих повідомлень */}
                   {!mine && (
                     <span className="text-[11px] font-semibold text-gray-500 mb-1">
                       {m.sender_name}
                     </span>
                   )}
-
                   {m.text || <i className="opacity-60">(no text)</i>}
                 </div>
               </div>
