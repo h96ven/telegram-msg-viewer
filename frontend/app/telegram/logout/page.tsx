@@ -6,10 +6,9 @@ import axios from "axios";
 
 export default function LogoutTelegram() {
   const router = useRouter();
-  const phone =
-    typeof window !== "undefined" ? localStorage.getItem("phone") : "";
 
   useEffect(() => {
+    const phone = localStorage.getItem("phone")?.trim();
     if (!phone) {
       router.replace("/login");
       return;
@@ -23,11 +22,24 @@ export default function LogoutTelegram() {
       } catch (err) {
         console.error(err);
       } finally {
-        localStorage.removeItem("phone");
-        router.replace("/login");
+        // phone залишаємо, щоб можна було швидко під’єднатися знову
+        router.replace("/telegram/connect");
       }
     })();
-  }, [phone, router]);
+  }, [router]);
 
-  <p className="p-6">Logging out of Telegram…</p>;
+  /* ---------------- JSX ---------------- */
+  return (
+    <main
+      className="
+      min-h-screen                       /* висота на весь екран           */
+      flex items-center justify-center   /* центруємо по вертикалі й горизонталі */
+      bg-gradient-to-br from-blue-50 via-white to-indigo-100
+    "
+    >
+      <p className="text-lg font-medium text-gray-700">
+        Logging&nbsp;out&nbsp;of&nbsp;Telegram…
+      </p>
+    </main>
+  );
 }

@@ -41,11 +41,16 @@ export default function ConnectTelegramPage() {
       setStep("code");
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
         const detail = (error as AxiosError<{ detail?: string }>).response?.data
           .detail;
-        setMsg(typeof detail === "string" ? detail : "Error connecting");
+        if (status === 429 && typeof detail === "string") {
+          setMsg(detail);
+        } else {
+          setMsg(typeof detail === "string" ? detail : "Connection error");
+        }
       } else {
-        setMsg("Error connecting");
+        setMsg("Connection error");
       }
     }
   };

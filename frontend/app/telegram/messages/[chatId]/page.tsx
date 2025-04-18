@@ -2,9 +2,11 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useParams } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Button } from "@heroui/react";
 
-/* --- бек‑ендова форма повідомлення --- */
+/* ---- тип з бек‑енду ---- */
 interface Msg {
   id: number;
   sender_id: number;
@@ -13,7 +15,7 @@ interface Msg {
   date: string;
 }
 
-/* --- стиль кнопок --- */
+/* ---- стилі ---- */
 const pagerBtn = `
   flex items-center justify-center
   h-10 min-w-[48px] px-3 rounded-lg
@@ -21,27 +23,30 @@ const pagerBtn = `
   shadow transition hover:bg-indigo-700 active:scale-95
   disabled:opacity-40 disabled:pointer-events-none
 `;
+const navBtn = `
+  inline-flex items-center gap-1
+  px-3 py-2 rounded-lg text-xs font-semibold
+  bg-gray-400 text-white shadow hover:bg-gray-600
+`;
 
 export default function Messages() {
   const PAGE_SIZE = 30;
   const { chatId } = useParams<{ chatId: string }>();
   const phone =
     typeof window !== "undefined" ? localStorage.getItem("phone") ?? "" : "";
+  const myId =
+    typeof window !== "undefined" ? localStorage.getItem("my_id") ?? "" : "";
 
-  /* state */
-  const [page, setPage] = useState(0); // 0 – самий кінець
+  /* -------- state -------- */
+  const [page, setPage] = useState(0); // 0 – найновіші
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [loading, setLoad] = useState(true);
-  const [hasNext, setNext] = useState(false); // ▲ (старіші)
-  const [hasPrev, setPrev] = useState(false); // ▼ (новіші)
-  const [myId, setMyId] = useState<string>("");
+  const [hasNext, setNext] = useState(false); // ▲ старіші
+  const [hasPrev, setPrev] = useState(false); // ▼ новіші
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  /* зчитуємо my_id один раз */
-  useEffect(() => setMyId(localStorage.getItem("my_id") ?? ""), []);
-
-  /* запит порції */
+  /* ---- fetch ---- */
   useEffect(() => {
     if (!phone) return;
     setLoad(true);
@@ -52,55 +57,67 @@ export default function Messages() {
           `?phone=${encodeURIComponent(phone)}&page=${page}&size=${PAGE_SIZE}`
       );
 
-      setMsgs(data.messages.reverse()); // показуємо знизу‑вгору
+      setMsgs(data.messages.reverse()); // newest → bottom
       setNext(data.has_next);
       setPrev(data.has_prev);
       setLoad(false);
     })();
   }, [phone, chatId, page]);
 
-  /* автоскрол у кінець (найновіше) */
+  /* ---- автоскрол униз ---- */
   useEffect(
     () => bottomRef.current?.scrollIntoView({ behavior: "auto" }),
     [msgs]
   );
 
-  /* --- JSX --- */
+  /* ========================= JSX ========================= */
   return (
     <main className="h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-indigo-100">
-      {/* ПАГІНАТОР */}
-      <header className="flex items-center justify-center gap-3 p-3 bg-white shadow">
-        {/* до кінця */}
-        <Button
-          className={pagerBtn}
-          isDisabled={page === 0}
-          onPress={() => setPage(0)}
-        >
-          Last
-        </Button>
+      {/* -------- top‑bar: | back | paginator | logout‑buttons | -------- */}
+      <header className="flex items-center gap-4 px-3 py-2 bg-white shadow">
+        {/* ← назад до чатів */}
+        <Link href="/telegram/chats" className={navBtn}>
+          <ArrowLeftIcon className="h-4 w-4" /> Chats
+        </Link>
 
-        {/* ↓ новіші */}
-        <Button
-          className={pagerBtn}
-          isDisabled={!hasPrev}
-          onPress={() => setPage((p) => Math.max(0, p - 1))}
-        >
-          ▼
-        </Button>
+        {/* центр: пагінатор · flex‑1 щоб стати посередині */}
+        <div className="flex-1 flex items-center justify-center gap-2">
+          <Button
+            className={pagerBtn}
+            isDisabled={page === 0}
+            onPress={() => setPage(0)}
+          >
+            Last
+          </Button>
+          <Button
+            className={pagerBtn}
+            isDisabled={!hasPrev}
+            onPress={() => setPage((p) => Math.max(0, p - 1))}
+          >
+            ▼
+          </Button>
+          <Button
+            className={pagerBtn}
+            isDisabled={!hasNext}
+            onPress={() => setPage((p) => p + 1)}
+          >
+            ▲
+          </Button>
+        </div>
 
-        {/* ↑ старіші */}
-        <Button
-          className={pagerBtn}
-          isDisabled={!hasNext}
-          onPress={() => setPage((p) => p + 1)}
-        >
-          ▲
-        </Button>
+        {/* праворуч: виходи */}
+        <div className="flex gap-2">
+          <Link href="/telegram/logout" className={navBtn}>
+            Logout TG
+          </Link>
+          <Link href="/logout" className={navBtn}>
+            Logout
+          </Link>
+        </div>
       </header>
 
-      {/* СТРІЧКА */}
+      {/* -------- стрічка -------- */}
       <section className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {/* скелет */}
         {loading &&
           Array.from({ length: 8 }).map((_, i) => (
             <div
@@ -109,17 +126,15 @@ export default function Messages() {
             />
           ))}
 
-        {/* меседжі */}
         {!loading &&
           msgs.map((m) => {
-            const mine = String(m.sender_id) === myId;
+            const mine = m.sender_id.toString() === myId;
             return (
               <div key={m.id} className="w-full flex justify-center">
                 <div
                   className={`
                   flex flex-col items-${mine ? "end" : "start"}
-                  max-w-[30%] w-fit break-words
-                  px-4 py-3 rounded-2xl shadow
+                  max-w-[30%] break-words w-fit px-4 py-3 rounded-2xl shadow
                   ${
                     mine
                       ? "bg-indigo-500 text-white"

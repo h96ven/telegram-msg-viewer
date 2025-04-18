@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from telethon import errors
+from telethon.errors import FloodWaitError
 from telethon.sessions import StringSession
 from telethon.sync import TelegramClient
 
@@ -62,6 +63,13 @@ async def connect_telegram(phone_data: PhoneNumber,
 
     except errors.PhoneNumberInvalidError:
         raise HTTPException(400, "Invalid phone number")
+
+    except FloodWaitError as e:
+        raise HTTPException(
+            status_code=429,
+            detail=
+            f"Too many requests. Please wait {e.seconds // 3600} h { (e.seconds % 3600) // 60 } min."
+        )
     finally:
         await client.disconnect()
 
