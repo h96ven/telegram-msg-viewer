@@ -107,7 +107,10 @@ async def verify_code(code_data: CodeData, db: AsyncSession = Depends(get_db)):
 
 
 async def _get_client(phone: str, db: AsyncSession) -> TelegramClient:
-    phone = phone.strip()
+    phone = phone.strip().replace(" ", "")
+    if phone and phone[0] != "+":
+        phone = f"+{phone}"
+
     rec = await db.scalar(
         select(TelegramSession).where(TelegramSession.phone == phone))
     if not rec:

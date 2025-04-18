@@ -23,7 +23,8 @@ export default function Messages() {
     (async () => {
       try {
         const { data } = await axios.get(
-          `http://localhost:8000/telegram/messages/${chatId}?phone=${phone}`
+          `http://localhost:8000/telegram/messages/${chatId}` +
+            `?phone=${encodeURIComponent(phone)}`
         );
         setMessages(data.messages);
       } catch (err) {
