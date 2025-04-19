@@ -57,7 +57,8 @@ A simple Telegram client viewer with a FastAPI backend and Next.js frontend.
 
 ## Notes
 
-- The backend expects requests at `http://localhost:8000`.
+- The backend listens on http://localhost:8000 by default.
+- This project was developed and tested against PostgreSQL 15 on Windows.
 - Adjust host/port or proxy settings as needed.
 
 
