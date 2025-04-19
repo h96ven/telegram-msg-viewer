@@ -199,13 +199,12 @@ async def _get_entity_cached(client: TelegramClient, uid: int):
     now = datetime.utcnow()
     cached = _USER_CACHE.get(uid)
     if cached and cached[1] > now:
-        return cached[0]  # already have fresh data
+        return cached[0]
 
     entity = await client.get_entity(uid)
     name = getattr(entity, "first_name", None) or getattr(entity, "title",
                                                           "") or "Unknown"
 
-    # аватар у base64 (не обов'язково, але вже є)
     raw = await client.download_profile_photo(entity, file=bytes)
     photo_b64 = ""
     if raw:
@@ -220,26 +219,24 @@ async def _get_entity_cached(client: TelegramClient, uid: int):
 async def get_messages(
         chat_id: int,
         phone: str,
-        page: int = 0,  # 0 – останні, 1 – попередня сторінка тощо
+        page: int = 0,
         size: int = 30,
         db: AsyncSession = Depends(get_db),
 ):
     client = await _get_client(phone, db)
 
-    # ――― читаємо size+1 шт. ↓ від самого КІНЦЯ (reverse=False за замовч.)
     raw = [
         m async for m in client.iter_messages(
             chat_id,
-            limit=size + 1,  # на 1 більше, щоб дізнатись «has_next»
-            add_offset=page * size,  # пропускаємо page·size від КІНЦЯ
-            reverse=False  # оставляємо порядок newest→oldest
+            limit=size + 1,
+            add_offset=page * size,
+            reverse=False
         )
     ]
-    msgs = raw[:size]  # рівно size для віддачі
-    has_next = len(raw) > size  # ще є старіші?
-    has_prev = page > 0  # є новіші (нижче)
+    msgs = raw[:size]
+    has_next = len(raw) > size
+    has_prev = page > 0
 
-    # ---- автори одним запитом + кеш ----
     uids = {m.sender_id for m in msgs if m.sender_id}
     user_map = {uid: await _get_entity_cached(client, uid) for uid in uids}
 
